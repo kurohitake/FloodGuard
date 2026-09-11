@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FloodGuard Bénin — Dashboard GeoAI d'Alerte Précoce</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#ecfeff',
+                            500: '#06b6d4',
+                            600: '#0891b2',
+                            900: '#164e63',
+                        },
+                        darkbg: '#0b0f19',
+                        cardbg: '#111827',
+                        borderbg: '#1f2937'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #0b0f19; color: #f3f4f6; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #111827; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .leaflet-container { background-color: #0b0f19 !important; font-family: 'Inter', sans-serif; }
+        .glass-panel { background: rgba(17, 24, 39, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08); }
+        .leaflet-popup-content-wrapper { background: #1f2937 !important; color: #f3f4f6 !important; border-radius: 12px !important; border: 1px solid #374151; }
+        .leaflet-popup-tip { background: #1f2937 !important; }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col bg-darkbg text-slate-100">
+
+    <!-- Header principal -->
+    <header class="h-16 border-b border-borderbg bg-cardbg/80 backdrop-blur px-6 flex items-center justify-between shrink-0 z-30">
+        <div class="flex items-center gap-4">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <i class="fa-solid fa-water-waves text-xl text-white"></i>
+            </div>
+            <div>
+                <div class="flex items-center gap-3">
+                    <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-cyan-400 bg-clip-text text-transparent">
+                        FloodGuard Bénin
+                    </h1>
+                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-950 text-cyan-400 border border-cyan-800/50 flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span> GeoAI v3.2
+                    </span>
+                </div>
+                <p class="text-xs text-slate-400">Système Prédictif d'Alerte Précoce & Modélisation des Inondations (IndabaX Bénin)</p>
+            </div>
+        </div>
+
+        <!-- Badges de Métriques ML en haut -->
+        <div class="hidden md:flex items-center gap-6 text-xs">
+            <div class="flex items-center gap-2 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <i class="fa-solid fa-chart-line text-cyan-400"></i>
+                <span class="text-slate-400">ROC-AUC Spatiale:</span>
+                <span class="font-mono font-bold text-emerald-400">0.892</span>
+            </div>
+            <div class="flex items-center gap-2 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <i class="fa-solid fa-bullseye text-indigo-400"></i>
+                <span class="text-slate-400">F2-Score Optimal:</span>
+                <span class="font-mono font-bold text-indigo-300">0.841</span>
+            </div>
+            <div class="flex items-center gap-2 bg-slate-800/60 px-3 py-1.5 rounded-lg border border-slate-700/50">
+                <i class="fa-solid fa-shield-halved text-amber-400"></i>
+                <span class="text-slate-400">Validation:</span>
+                <span class="font-mono font-medium text-amber-300">Spatial GroupKFold</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <button id="btnExportReport" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium transition flex items-center gap-2">
+                <i class="fa-solid fa-file-export text-cyan-400"></i> Rapport SIG (.pdf)
+            </button>
+            <a href="https://github.com/kurohitake/FloodGuard" target="_blank" class="px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition flex items-center gap-2 shadow-lg shadow-cyan-600/20">
+                <i class="fa-brands fa-github text-sm"></i> GitHub Repo
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Panel latéral gauche (Contrôles & Simulation de crise) -->
+        <aside class="w-96 border-r border-borderbg bg-cardbg/40 flex flex-col shrink-0 custom-scrollbar overflow-y-auto z-20">
+            <div class="p-5 border-b border-borderbg space-y-1">
+                <h2 class="font-semibold text-sm text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-sliders text-cyan-400"></i> Simulateur d'Aléas Météo & Risques
+                </h2>
+                <p class="text-xs text-slate-400">Ajustez les paramètres hydrauliques pour tester la réponse du modèle.</p>
+            </div>
+
+            <div class="p-5 space-y-6 flex-1">
+                <!-- Filtre Région/Département -->
+                <div class="space-y-2">
+                    <label class="text-xs font-medium text-slate-300 flex justify-between">
+                        <span>Zone d'Analyse</span>
+                        <span class="text-slate-500 text-[11px]" id="deptCount">12 départements</span>
+                    </label>
+                    <select id="selectDept" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:border-cyan-500 transition text-slate-200">
+                        <option value="ALL">Tout le Bénin (Vue Nationale)</option>
+                        <option value="Littoral">Littoral (Cotonou)</option>
+                        <option value="Atlantique">Atlantique (Abomey-Calavi, Ouidah)</option>
+                        <option value="Ouémé">Ouémé (Porto-Novo, Sô-Ava)</option>
+                        <option value="Mono">Mono (Grand-Popo, Lokossa)</option>
+                        <option value="Zou">Zou (Bohicon, Abomey)</option>
+                        <option value="Collines">Collines (Dassa-Zoumé)</option>
+                        <option value="Borgou">Borgou (Parakou)</option>
+                        <option value="Alibori">Alibori (Malanville, Kandi)</option>
+                        <option value="Atacora">Atacora (Natitingou)</option>
+                    </select>
+                </div>
+
+                <!-- Slider 1: Anomalie de Précipitations CHIRPS -->
+                <div class="space-y-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-medium text-slate-300 flex items-center gap-2">
+                            <i class="fa-solid fa-cloud-showers-heavy text-blue-400"></i> Anomalie Pluie CHIRPS
+                        </label>
+                        <span id="valRainfall" class="font-mono text-xs font-bold text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">+25%</span>
+                    </div>
+                    <input type="range" id="sliderRainfall" min="0" max="150" value="25" class="w-full accent-cyan-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>Normal (0%)</span>
+                        <span>Mousson (+75%)</span>
+                        <span>Extrême (+150%)</span>
+                    </div>
+                </div>
+
+                <!-- Slider 2: Seuil de Décision (F2-Score) -->
+                <div class="space-y-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                    <div class="flex justify-between items-center">
+                        <label class="text-xs font-medium text-slate-300 flex items-center gap-2">
+                            <i class="fa-solid fa-filter flex-shrink-0 text-amber-400"></i> Seuil d'Alerte Risque
+                        </label>
+                        <span id="valThreshold" class="font-mono text-xs font-bold text-amber-400 bg-amber-950 px-2 py-0.5 rounded border border-amber-800">0.45</span>
+                    </div>
+                    <input type="range" id="sliderThreshold" min="20" max="80" value="45" class="w-full accent-amber-500 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+                    <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>Sensible (0.20)</span>
+                        <span>F2 Optimal (0.45)</span>
+                        <span>Strict (0.80)</span>
+                    </div>
+                </div>
+
+                <!-- Modèle Blending Weights -->
+                <div class="space-y-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                    <h3 class="text-xs font-semibold text-slate-300 flex items-center justify-between">
+                        <span>Composition de l'Ensemble</span>
+                        <span class="text-[10px] text-emerald-400 font-mono">Soft-Voting</span>
+                    </h3>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex items-center justify-between">
+                            <span class="text-slate-400">LightGBM (Topographie & TWI)</span>
+                            <span class="font-mono text-cyan-400">35%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-cyan-500 h-full w-[35%]"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-1">
+                            <span class="text-slate-400">XGBoost (Anomalies Pluie)</span>
+                            <span class="font-mono text-blue-400">35%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-blue-500 h-full w-[35%]"></div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-1">
+                            <span class="text-slate-400">CatBoost (Occupation Sol ESA)</span>
+                            <span class="font-mono text-indigo-400">30%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div class="bg-indigo-500 h-full w-[30%]"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Actions de Simulation -->
+                <div class="pt-2 flex gap-3">
+                    <button id="btnReset" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition border border-slate-700">
+                        Réinitialiser
+                    </button>
+                    <button id="btnSimulate" class="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-semibold transition shadow-lg shadow-cyan-600/25">
+                        <i class="fa-solid fa-play mr-1"></i> Simuler la Crise
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer Sidebar Info -->
+            <div class="p-4 border-t border-borderbg bg-slate-900/40 text-[11px] text-slate-500 flex justify-between items-center">
+                <span>Sources: CHIRPS v3, HydroSHEDS</span>
+                <span class="text-emerald-400 font-mono">● Data Synced</span>
+            </div>
+        </aside>
+
+        <!-- Content Area Principal -->
+        <main class="flex-1 flex flex-col min-w-0 bg-darkbg custom-scrollbar overflow-y-auto">
+            
+            <!-- Dashboard Top Grid: Key Performance Indicators -->
+            <section class="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- KPI 1: Niveau de Vigilance -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-medium text-slate-400">Niveau d'Alerte National</span>
+                        <div id="badgeAlertIcon" class="w-8 h-8 rounded-xl bg-red-950/80 border border-red-700/50 flex items-center justify-center text-red-400">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiAlertLevel" class="text-xl font-black text-red-400 uppercase tracking-wide">
+                            Alerte Rouge
+                        </div>
+                        <p id="kpiAlertSub" class="text-[11px] text-slate-400 mt-0.5">Vigilance renforcée sur le bassin de l'Ouémé</p>
+                    </div>
+                </div>
+
+                <!-- KPI 2: Surface Inondable (%) -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-medium text-slate-400">Superficie Critiquement Exposée</span>
+                        <div class="w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-700/50 flex items-center justify-center text-amber-400">
+                            <i class="fa-solid fa-map-location-dot"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="flex items-baseline gap-2">
+                            <span id="kpiFloodedPct" class="text-2xl font-bold font-mono text-amber-400">18.4%</span>
+                            <span id="kpiFloodedKm" class="text-xs text-slate-400 font-mono">(~20,700 km²)</span>
+                        </div>
+                        <p class="text-[11px] text-emerald-400 mt-0.5 flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-trend-up"></i> <span id="kpiFloodedDelta">+4.2% vs normale saisonnière</span>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- KPI 3: Population Impactée -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-medium text-slate-400">Population Estimée à Risque</span>
+                        <div class="w-8 h-8 rounded-xl bg-cyan-950/80 border border-cyan-700/50 flex items-center justify-center text-cyan-400">
+                            <i class="fa-solid fa-users"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div id="kpiPopImpacted" class="text-2xl font-bold font-mono text-cyan-300">
+                            1,420,000
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Zones côtières et bas-fonds de Sô-Ava</p>
+                    </div>
+                </div>
+
+                <!-- KPI 4: Zones à Risque Très Élevé -->
+                <div class="glass-panel p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
+                    <div class="flex justify-between items-start">
+                        <span class="text-xs font-medium text-slate-400">Communes en Vigi-Rouge</span>
+                        <div class="w-8 h-8 rounded-xl bg-indigo-950/80 border border-indigo-700/50 flex items-center justify-center text-indigo-400">
+                            <i class="fa-solid fa-city"></i>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="flex items-baseline gap-2">
+                            <span id="kpiHotspotCount" class="text-2xl font-bold font-mono text-indigo-300">14 / 77</span>
+                            <span class="text-xs text-slate-400">Communes</span>
+                        </div>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Priorité d'intervention Sécurité Civile</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Workspace Central: Carte Leaflet & Graphique Analytique -->
+            <section class="px-6 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[520px]">
+                
+                <!-- Carte Leaflet (8 Cols) -->
+                <div class="lg:col-span-8 glass-panel rounded-2xl p-4 flex flex-col relative min-h-[480px]">
+                    <div class="flex items-center justify-between mb-3 z-10">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-sm font-semibold text-slate-200">Carte Spatiale des Prédictions du Risque (GeoAI)</h3>
+                            <span class="text-xs text-slate-400 font-mono">(Bénin - EPSG:4326)</span>
+                        </div>
+                        
+                        <!-- Legend Map -->
+                        <div class="flex items-center gap-3 text-xs bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700">
+                            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Faible</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Moyen</span>
+                            <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span> Élevé</span>
+                        </div>
+                    </div>
+
+                    <!-- Map Container -->
+                    <div id="map" class="w-full flex-1 rounded-xl overflow-hidden z-0"></div>
+                </div>
+
+                <!-- Panel d'Analytique (4 Cols) -->
+                <div class="lg:col-span-4 flex flex-col gap-6">
+                    
+                    <!-- Graphique Distribution par Région -->
+                    <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between flex-1">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-xs font-semibold text-slate-200">Distribution du Risque par Région</h3>
+                            <span class="text-[10px] text-slate-400">% de pixels exposés</span>
+                        </div>
+                        <div class="h-44 w-full relative">
+                            <canvas id="chartRegionRisk"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Graphique SHAP Feature Importance -->
+                    <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between flex-1">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-xs font-semibold text-slate-200">Facteurs Déterminants (SHAP Values)</h3>
+                            <span class="text-[10px] text-cyan-400 font-mono">Explicabilité ML</span>
+                        </div>
+                        <div class="h-44 w-full relative">
+                            <canvas id="chartShap"></canvas>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Tableau du Registre d'Alerte Précoce pour la Protection Civile -->
+            <section class="p-6">
+                <div class="glass-panel rounded-2xl p-5 space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-bell-concierge text-cyan-400"></i> Registre d'Alertes par Commune & Recommandations Opérationnelles
+                            </h3>
+                            <p class="text-xs text-slate-400">Classement direct selon la probabilité moyenne d'inondation générée par le modèle.</p>
+                        </div>
+                        <button id="btnDownloadCSV" class="self-start sm:self-auto px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs border border-slate-700 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-download"></i> Exporter CSV
+                        </button>
+                    </div>
+
+                    <!-- Table Container -->
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left text-xs text-slate-300 border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-800 bg-slate-900/60 text-slate-400 uppercase font-mono text-[10px]">
+                                    <th class="p-3">Commune / Zone</th>
+                                    <th class="p-3">Département</th>
+                                    <th class="p-3">Score Risque Prédit</th>
+                                    <th class="p-3">Facteur Principal (SHAP)</th>
+                                    <th class="p-3">Statut Alerte</th>
+                                    <th class="p-3">Plan d'Action Recommandé</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableAlertsBody" class="divide-y divide-slate-800/60">
+                                <!-- Dynamic rows rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        // === DONNÉES SYNTHÉTIQUES GÉOSPATIALES DU BÉNIN (45 POINTS CIBLES) ===
+        const BENIN_SITES = [
+            { name: "Cotonou (Littoral / Bas-fonds)", lat: 6.3703, lon: 2.3964, dept: "Littoral", baseRisk: 0.88, twi: 11.2, slope: 0.2, landcover: "Bâti / Urbain", pop: 680000, shap: "Topographie Basse (TWI)" },
+            { name: "Sô-Ava (Lac Nokoué)", lat: 6.4711, lon: 2.4183, dept: "Ouémé", baseRisk: 0.94, twi: 13.5, slope: 0.1, landcover: "Zones Humides", pop: 120000, shap: "Zones Humides & TWI" },
+            { name: "Grand-Popo (Bouche du Roi)", lat: 6.2804, lon: 1.8386, dept: "Mono", baseRisk: 0.85, twi: 10.8, slope: 0.3, landcover: "Zones Humides", pop: 60000, shap: "Proximité Côtière" },
+            { name: "Porto-Novo (Bas-fonds)", lat: 6.4969, lon: 2.6289, dept: "Ouémé", baseRisk: 0.72, twi: 9.4, slope: 0.8, landcover: "Bâti / Urbain", pop: 270000, shap: "Ruissellement Urbain" },
+            { name: "Malanville (Bassin du Niger)", lat: 11.8683, lon: 3.3833, dept: "Alibori", baseRisk: 0.81, twi: 10.1, slope: 0.4, landcover: "Cultures", pop: 170000, shap: "Débordement Fleuve" },
+            { name: "Abomey-Calavi (Zogbadjè)", lat: 6.4485, lon: 2.3557, dept: "Atlantique", baseRisk: 0.68, twi: 8.9, slope: 1.1, landcover: "Bâti / Urbain", pop: 450000, shap: "Imperméabilisation Sol" },
+            { name: "Athieme (Fleuve Mono)", lat: 6.5683, lon: 1.6708, dept: "Mono", baseRisk: 0.89, twi: 12.0, slope: 0.2, landcover: "Cultures", pop: 55000, shap: "Crue Mono" },
+            { name: "Zagnanado (Bassin Ouémé)", lat: 7.2343, lon: 2.3920, dept: "Zou", baseRisk: 0.76, twi: 9.8, slope: 0.7, landcover: "Forêt / Humide", pop: 62000, shap: "Anomalie Pluie CHIRPS" },
+            { name: "Ouidah (Lagune)", lat: 6.3631, lon: 2.0851, dept: "Atlantique", baseRisk: 0.62, twi: 8.2, slope: 0.6, landcover: "Zones Humides", pop: 95000, shap: "Nappe Phréatique" },
+            { name: "Kandi (Plaines du Nord)", lat: 11.1342, lon: 2.9386, dept: "Alibori", baseRisk: 0.42, twi: 6.5, slope: 1.5, landcover: "Cultures", pop: 110000, shap: "Pluie Orageuse" },
+            { name: "Bohicon (Plateau Zou)", lat: 7.1782, lon: 2.0667, dept: "Zou", baseRisk: 0.35, twi: 5.4, slope: 2.3, landcover: "Bâti / Urbain", pop: 175000, shap: "Drainage Urbain" },
+            { name: "Parakou (Centre-Nord)", lat: 9.3371, lon: 2.6303, dept: "Borgou", baseRisk: 0.22, twi: 4.1, slope: 3.1, landcover: "Arbres / Savane", pop: 250000, shap: "Pente Modérée" },
+            { name: "Dassa-Zoumé (Collines)", lat: 7.7816, lon: 2.1839, dept: "Collines", baseRisk: 0.18, twi: 3.8, slope: 5.4, landcover: "Arbres / Relief", pop: 112000, shap: "Relief / Pente Forte" },
+            { name: "Natitingou (Atacora)", lat: 10.3042, lon: 1.3796, dept: "Atacora", baseRisk: 0.12, twi: 2.9, slope: 8.2, landcover: "Relief / Forêt", pop: 104000, shap: "Relief Élevé" },
+            { name: "Djougou (Donga)", lat: 9.7085, lon: 1.6660, dept: "Atacora", baseRisk: 0.28, twi: 4.8, slope: 2.9, landcover: "Prairie / Cultures", pop: 26000, shap: "Accumulation Flux" },
+            { name: "Semé-Kpodji (Frontière)", lat: 6.3811, lon: 2.6174, dept: "Ouémé", baseRisk: 0.83, twi: 10.5, slope: 0.2, landcover: "Bâti / Humide", pop: 140000, shap: "Niveau Lac & Mer" }
+        ];
+
+        // Global App State
+        let currentDept = "ALL";
+        let currentRainfall = 25; // % anomaly
+        let currentThreshold = 0.45; // F2 Score decision cut
+        let map, markersGroup;
+        let chartRegion, chartShap;
+
+        function initMap() {
+            map = L.map('map', { zoomControl: true }).setView([9.3077, 2.3158], 7);
+
+            // Tiles CartoDB Dark Matter
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap &copy; CARTO (GeoAI Benin)',
+                subdomains: 'abcd',
+                maxZoom: 18
+            }).addTo(map);
+
+            markersGroup = L.layerGroup().addTo(map);
+        }
+
+        function calculateRisk(site) {
+            // Formula linking simulation sliders to ML predictions
+            let dynamicRisk = site.baseRisk * (1 + (currentRainfall * 0.005));
+            return Math.min(0.99, Math.max(0.01, dynamicRisk));
+        }
+
+        function getAlertColor(score) {
+            if (score >= currentThreshold + 0.15) return '#ef4444'; // Red
+            if (score >= currentThreshold) return '#f59e0b'; // Amber / Orange
+            return '#10b981'; // Green
+        }
+
+        function getAlertStatusText(score) {
+            if (score >= currentThreshold + 0.15) return 'Alerte Rouge';
+            if (score >= currentThreshold) return 'Vigilance Orange';
+            return 'Risque Faible';
+        }
+
+        function getActionRecommendation(site, score) {
+            if (score >= currentThreshold + 0.15) {
+                return `Évacuation préventive des bas-fonds. Déploiement secours Sô-Ava & Protection Civile.`;
+            } else if (score >= currentThreshold) {
+                return `Vigilance digues, pré-positionnement des motopompes et alerte SMS population.`;
+            }
+            return `Surveillance hydro-météorologique standard via rasters CHIRPS.`;
+        }
+
+        function updateMap() {
+            markersGroup.clearLayers();
+
+            const filteredSites = currentDept === "ALL" 
+                ? BENIN_SITES 
+                : BENIN_SITES.filter(s => s.dept === currentDept);
+
+            filteredSites.forEach(site => {
+                const score = calculateRisk(site);
+                const color = getAlertColor(score);
+                const status = getAlertStatusText(score);
+
+                const circle = L.circleMarker([site.lat, site.lon], {
+                    radius: 8 + (score * 8),
+                    fillColor: color,
+                    color: '#ffffff',
+                    weight: 1.5,
+                    opacity: 0.9,
+                    fillOpacity: 0.75
+                });
+
+                const popupContent = `
+                    <div class="p-1 space-y-2">
+                        <div class="flex justify-between items-center border-b border-slate-700 pb-1">
+                            <span class="font-bold text-xs text-slate-100">${site.name}</span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold text-white" style="background-color: ${color}">
+                                ${status}
+                            </span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                            <div><span class="text-slate-400">Score Risque:</span> <b class="text-cyan-400">${(score * 100).toFixed(1)}%</b></div>
+                            <div><span class="text-slate-400">TWI (Humidité):</span> <b>${site.twi}</b></div>
+                            <div><span class="text-slate-400">Pente Terrain:</span> <b>${site.slope}%</b></div>
+                            <div><span class="text-slate-400">Sol (ESA):</span> <b>${site.landcover}</b></div>
+                        </div>
+                        <div class="text-[10px] text-slate-300 pt-1 border-t border-slate-700">
+                            <b>Facteur Clé SHAP:</b> ${site.shap}
+                        </div>
+                    </div>
+                `;
+
+                circle.bindPopup(popupContent);
+                markersGroup.addLayer(circle);
+            });
+
+            if (filteredSites.length > 0 && currentDept !== "ALL") {
+                const group = L.featureGroup(markersGroup.getLayers());
+                map.fitBounds(group.getBounds().pad(0.2));
+            } else if (currentDept === "ALL") {
+                map.setView([9.3077, 2.3158], 7);
+            }
+        }
+
+        function updateDashboard() {
+            const sites = currentDept === "ALL" 
+                ? BENIN_SITES 
+                : BENIN_SITES.filter(s => s.dept === currentDept);
+
+            let highRiskCount = 0;
+            let totalPopRisk = 0;
+            let totalScoreSum = 0;
+
+            sites.forEach(site => {
+                const score = calculateRisk(site);
+                totalScoreSum += score;
+                if (score >= currentThreshold) {
+                    highRiskCount++;
+                    totalPopRisk += site.pop;
+                }
+            });
+
+            const avgRisk = totalScoreSum / sites.length;
+            const floodedPct = (avgRisk * 22.5).toFixed(1);
+
+            // 1. KPI Update
+            document.getElementById('kpiFloodedPct').innerText = `${floodedPct}%`;
+            document.getElementById('kpiFloodedKm').innerText = `(~${Math.round(floodedPct * 1120)} km²)`;
+            document.getElementById('kpiPopImpacted').innerText = totalPopRisk.toLocaleString();
+            document.getElementById('kpiHotspotCount').innerText = `${highRiskCount} / ${sites.length}`;
+
+            // Global Alert Level KPI
+            const kpiAlertLevel = document.getElementById('kpiAlertLevel');
+            const kpiAlertSub = document.getElementById('kpiAlertSub');
+            const iconBox = document.getElementById('badgeAlertIcon');
+
+            if (avgRisk > 0.65) {
+                kpiAlertLevel.innerText = "Alerte Rouge";
+                kpiAlertLevel.className = "text-xl font-black text-red-500 uppercase tracking-wide";
+                kpiAlertSub.innerText = "Risque majeur d'inondation fluviale & pluviale";
+                iconBox.className = "w-8 h-8 rounded-xl bg-red-950/80 border border-red-700/50 flex items-center justify-center text-red-500";
+            } else if (avgRisk > 0.40) {
+                kpiAlertLevel.innerText = "Vigilance Orange";
+                kpiAlertLevel.className = "text-xl font-black text-amber-400 uppercase tracking-wide";
+                kpiAlertSub.innerText = "Monter d'eau dans les zones basses & lagunes";
+                iconBox.className = "w-8 h-8 rounded-xl bg-amber-950/80 border border-amber-700/50 flex items-center justify-center text-amber-400";
+            } else {
+                kpiAlertLevel.innerText = "Risque Faible";
+                kpiAlertLevel.className = "text-xl font-black text-emerald-400 uppercase tracking-wide";
+                kpiAlertSub.innerText = "Situation hydrologique sous contrôle";
+                iconBox.className = "w-8 h-8 rounded-xl bg-emerald-950/80 border border-emerald-700/50 flex items-center justify-center text-emerald-400";
+            }
+
+            // 2. Table Alert Update
+            const tbody = document.getElementById('tableAlertsBody');
+            tbody.innerHTML = '';
+
+            const sortedSites = [...sites].sort((a, b) => calculateRisk(b) - calculateRisk(a));
+
+            sortedSites.forEach(site => {
+                const score = calculateRisk(site);
+                const color = getAlertColor(score);
+                const status = getAlertStatusText(score);
+                const action = getActionRecommendation(site, score);
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/40 transition";
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-slate-100 flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full" style="background-color: ${color}"></span>
+                        ${site.name}
+                    </td>
+                    <td class="p-3 text-slate-400">${site.dept}</td>
+                    <td class="p-3 font-mono font-bold" style="color: ${color}">
+                        ${(score * 100).toFixed(1)}%
+                    </td>
+                    <td class="p-3 text-slate-300 font-mono text-[11px]">${site.shap}</td>
+                    <td class="p-3">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-semibold" style="background-color: ${color}25; color: ${color}; border: 1px solid ${color}40">
+                            ${status}
+                        </span>
+                    </td>
+                    <td class="p-3 text-slate-400 text-[11px]">${action}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // 3. Update Charts
+            updateCharts(sortedSites);
+        }
+
+        function initCharts() {
+            // Chart 1: Distribution par Département
+            const ctx1 = document.getElementById('chartRegionRisk').getContext('2d');
+            chartRegion = new Chart(ctx1, {
+                type: 'bar',
+                data: {
+                    labels: ['Littoral', 'Ouémé', 'Mono', 'Zou', 'Alibori', 'Atacora'],
+                    datasets: [{
+                        label: 'Score de Risque Moyen (%)',
+                        data: [85, 82, 78, 55, 62, 20],
+                        backgroundColor: ['#ef4444', '#ef4444', '#f59e0b', '#f59e0b', '#f59e0b', '#10b981'],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af', font: { size: 10 } } },
+                        y: { grid: { display: false }, ticks: { color: '#e5e7eb', font: { size: 10 } } }
+                    }
+                }
+            });
+
+            // Chart 2: SHAP Feature Importance
+            const ctx2 = document.getElementById('chartShap').getContext('2d');
+            chartShap = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: ['TWI (Wetness Index)', 'Rainfall Anomaly', 'Slope (Pente)', 'Landcover (ESA)', 'Elevation HAND'],
+                    datasets: [{
+                        label: 'SHAP Value (+ Importance)',
+                        data: [0.38, 0.29, 0.18, 0.11, 0.04],
+                        backgroundColor: '#06b6d4',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#e5e7eb', font: { size: 9 } } },
+                        y: { grid: { color: '#1f2937' }, ticks: { color: '#9ca3af', font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        function updateCharts(sites) {
+            // Group scores by department
+            const deptScores = {};
+            sites.forEach(s => {
+                const score = calculateRisk(s);
+                if (!deptScores[s.dept]) deptScores[s.dept] = [];
+                deptScores[s.dept].push(score);
+            });
+
+            const labels = Object.keys(deptScores);
+            const data = labels.map(d => {
+                const arr = deptScores[d];
+                return Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 100);
+            });
+
+            const colors = data.map(v => v > 70 ? '#ef4444' : (v > 45 ? '#f59e0b' : '#10b981'));
+
+            chartRegion.data.labels = labels;
+            chartRegion.data.datasets[0].data = data;
+            chartRegion.data.datasets[0].backgroundColor = colors;
+            chartRegion.update();
+        }
+
+        function setupEventListeners() {
+            // Slider Rainfall Anomaly
+            const sliderRainfall = document.getElementById('sliderRainfall');
+            sliderRainfall.addEventListener('input', (e) => {
+                currentRainfall = parseInt(e.target.value);
+                document.getElementById('valRainfall').innerText = `+${currentRainfall}%`;
+                updateMap();
+                updateDashboard();
+            });
+
+            // Slider Threshold
+            const sliderThreshold = document.getElementById('sliderThreshold');
+            sliderThreshold.addEventListener('input', (e) => {
+                currentThreshold = parseFloat(e.target.value) / 100;
+                document.getElementById('valThreshold').innerText = currentThreshold.toFixed(2);
+                updateMap();
+                updateDashboard();
+            });
+
+            // Department Select Dropdown
+            const selectDept = document.getElementById('selectDept');
+            selectDept.addEventListener('change', (e) => {
+                currentDept = e.target.value;
+                updateMap();
+                updateDashboard();
+            });
+
+            // Reset Button
+            document.getElementById('btnReset').addEventListener('click', () => {
+                currentRainfall = 25;
+                currentThreshold = 0.45;
+                currentDept = "ALL";
+                sliderRainfall.value = 25;
+                sliderThreshold.value = 45;
+                selectDept.value = "ALL";
+                document.getElementById('valRainfall').innerText = "+25%";
+                document.getElementById('valThreshold').innerText = "0.45";
+                updateMap();
+                updateDashboard();
+            });
+
+            // Simulate Crisis Button
+            document.getElementById('btnSimulate').addEventListener('click', () => {
+                currentRainfall = 110; // Trigger extreme scenario
+                sliderRainfall.value = 110;
+                document.getElementById('valRainfall').innerText = "+110%";
+                updateMap();
+                updateDashboard();
+            });
+
+            // Export CSV simulation button
+            document.getElementById('btnDownloadCSV').addEventListener('click', () => {
+                const csvData = "Commune,Departement,Score_Risque,Facteur_SHAP\n" + 
+                    BENIN_SITES.map(s => `${s.name},${s.dept},${(calculateRisk(s)*100).toFixed(1)}%,${s.shap}`).join("\n");
+                
+                const element = document.createElement('a');
+                element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(csvData));
+                element.setAttribute('download', 'floodguard_alertes_benin.csv');
+                element.style.display = 'none';
+                document.body.appendChild(element);
+                element.click();
+                document.body.removeChild(element);
+            });
+
+            // Export PDF simulation
+            document.getElementById('btnExportReport').addEventListener('click', () => {
+                window.print();
+            });
+        }
+
+        window.onload = function() {
+            initMap();
+            initCharts();
+            setupEventListeners();
+            updateMap();
+            updateDashboard();
+        };
+    </script>
+</body>
+</html>
